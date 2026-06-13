@@ -1,0 +1,25 @@
+# Package manager for Arch Linux
+## Install & remove
+pacman -S <pkg>	Install a package (sync)
+pacman -S --needed <pkg>	Install, skip already-up-to-date packages
+pacman -Sy <pkg>	Refresh db then install (avoid -Sy alone)
+pacman -R <pkg>	Remove a package, keep its dependencies
+pacman -Rs <pkg>	Remove a package + unneeded dependencies
+pacman -Rns <pkg>	Remove pkg, deps, and its config files
+## Update
+pacman -Syu	Full system upgrade (refresh + update everything)
+pacman -Syyu	Force-refresh all dbs then upgrade
+## Search & query
+pacman -Ss <term>	Search remote repos for a package
+pacman -Qs <term>	Search installed packages
+pacman -Si <pkg>	Show remote package info
+pacman -Qi <pkg>	Show installed package info
+pacman -Ql <pkg>	List files owned by a package
+pacman -Qo <file>	Find which package owns a file
+pacman -Qe	List explicitly installed packages
+pacman -Qdt	List orphans (deps no longer needed)
+## Maintenance
+pacman -Sc	Clean old packages from cache
+pacman -Scc	Clean entire package cache
+pacman -U <file>	Install a local/downloaded .pkg.tar.zst
+pacman-key --refresh-keys	Refresh signing keys

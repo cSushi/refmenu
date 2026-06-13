@@ -1,0 +1,26 @@
+# Distributed version control
+## Start & clone
+git init	Create a new repo in current dir
+git clone <url>	Copy a remote repo locally
+## Stage & commit
+git status	Show changed/staged files
+git add <path>	Stage changes for commit
+git add -p	Stage hunks interactively
+git commit -m "msg"	Commit staged changes
+git commit --amend	Edit the last commit
+## Branch & merge
+git branch	List branches
+git switch <branch>	Switch to a branch
+git switch -c <branch>	Create and switch to a branch
+git merge <branch>	Merge a branch into current
+git rebase <branch>	Replay commits on top of branch
+## Remote sync
+git fetch	Download remote changes, don't merge
+git pull	Fetch + merge remote changes
+git push	Upload commits to remote
+git push -u origin <branch>	Push and set upstream
+## Inspect & undo
+git log --oneline	Compact commit history
+git diff	Show unstaged changes
+git restore <file>	Discard working-tree changes
+git reset --soft HEAD~1	Undo last commit, keep changes staged

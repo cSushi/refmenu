@@ -1,0 +1,13 @@
+# AUR helper (pacman wrapper for the AUR)
+## Install & update
+paru -S <pkg>	Install from repos or AUR
+paru	Update all repo + AUR packages
+paru -Sua	Update only AUR packages
+## Search & info
+paru -Ss <term>	Search repos + AUR
+paru -Si <pkg>	Show package info
+paru <term>	Interactive search + install menu
+## Maintain
+paru -Rns <pkg>	Remove pkg, deps, and config
+paru -Sc	Clean caches
+paru -Qua	List available AUR updates

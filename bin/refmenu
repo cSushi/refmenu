@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# refmenu - a wofi-driven reference menu for terminal commands & Hyprland keybinds
+# Reference-only: selecting an entry shows it; nothing is copied or typed.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+# Where command-reference data lives. Honors XDG, falls back to the install dir.
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+PREFIX="$(dirname "$(dirname "$SELF")")"          # .../refmenu
+DATA_DIR="${REFMENU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/refmenu/data}"
+# If the user hasn't installed data to XDG yet, fall back to the repo copy.
+[[ -d "$DATA_DIR" ]] || DATA_DIR="$PREFIX/data"
+
+HYPR_CONF="${REFMENU_HYPR_CONF:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hyprland.conf}"
+
+# ---------------------------------------------------------------------------
+# wofi wrapper
+# ---------------------------------------------------------------------------
+have() { command -v "$1" >/dev/null 2>&1; }
+
+if ! have wofi; then
+  echo "refmenu: wofi is not installed or not in PATH." >&2
+  exit 1
+fi
+
+# A dmenu-style wofi call. $1 = prompt text.
+menu() {
+  wofi --dmenu --insensitive --prompt "$1" \
+       --width 750 --height 500 \
+       --cache-file /dev/null
+}
+
+# Show a plain message back through wofi (reference display).
+show() {
+  # Print the text and let the user dismiss. --lines sized to content.
+  printf '%s\n' "$1" | wofi --dmenu --prompt "↩ back" \
+       --width 750 --height 500 --cache-file /dev/null >/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Data format for command files (data/*.cmds)
+# ---------------------------------------------------------------------------
+# Each tool gets one file: data/<tool>.cmds
+# Line 1 (starting with "# ") is the tool's short description.
+# Remaining lines:   command<TAB>description
+# Lines beginning with ## are subsection headers (optional, shown grouped).
+# Blank lines and other #-comments are ignored.
+
+list_tools() {
+  shopt -s nullglob
+  for f in "$DATA_DIR"/*.cmds; do
+    local name desc
+    name="$(basename "$f" .cmds)"
+    desc="$(grep -m1 '^# ' "$f" | sed 's/^# //')"
+    printf '%s\t%s\n' "$name" "$desc"
+  done | sort
+}
+
+# Pretty-print one tool's command list into wofi, return the chosen line.
+browse_tool() {
+  local tool="$1" file="$DATA_DIR/$tool.cmds"
+  [[ -f "$file" ]] || { show "No data file for '$tool'."; return; }
+
+  while true; do
+    # Build display: "command   —   description", skipping headers/meta.
+    local choice
+    choice="$(
+      awk -F'\t' '
+        /^## / { hdr=substr($0,4); print "──  " hdr "  ──"; next }
+        /^#/   { next }
+        NF>=2  { printf "%-28s  %s\n", $1, $2 }
+      ' "$file" | menu "$tool ▸"
+    )" || return
+
+    [[ -z "$choice" ]] && return
+    # Ignore header rows.
+    [[ "$choice" == ──* ]] && continue
+
+    # Reconstruct the full entry. The display uses 2+ spaces between the
+    # command and its description, so cut at the first run of 2+ spaces.
+    local cmd
+    cmd="$(printf '%s' "$choice" | sed -E 's/[[:space:]]{2,}.*$//; s/[[:space:]]+$//')"
+    local full
+    full="$(awk -F'\t' -v c="$cmd" '$1==c {print $1"\n\n  "$2}' "$file")"
+    [[ -z "$full" ]] && full="$cmd"
+    show "$full"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Hyprland keybind parsing (live from hyprland.conf)
+# ---------------------------------------------------------------------------
+# Parses:  bind = MODS, KEY, DISPATCHER, ARGS
+# Also handles bindm/binde/bindl/bindr variants. Resolves $mainMod etc.
+parse_hypr() {
+  [[ -f "$HYPR_CONF" ]] || { echo "No hyprland.conf at: $HYPR_CONF"; return; }
+
+  awk '
+    # collect variable definitions:  $name = value  (key keeps its leading $)
+    /^[[:space:]]*\$/ {
+      line=$0
+      sub(/^[[:space:]]*/,"",line)
+      eq=index(line,"=")
+      if (eq>0) {
+        key=substr(line,1,eq-1); val=substr(line,eq+1)
+        gsub(/[[:space:]]/,"",key); sub(/^[[:space:]]+/,"",val); sub(/[[:space:]]+$/,"",val)
+        var[key]=val
+      }
+    }
+    # bind lines:  bind / bindm / binde / bindl / bindr
+    /^[[:space:]]*bind[mlre]?[[:space:]]*=/ {
+      line=$0
+      sub(/#.*/,"",line)                 # strip trailing comments
+      sub(/^[[:space:]]*bind[mlre]?[[:space:]]*=[[:space:]]*/,"",line)
+      n=split(line, a, ",")              # mods, key, dispatcher, args...
+      mods=a[1]; key=a[2]; disp=a[3]
+      args=""
+      for (i=4;i<=n;i++){ args=args (i>4?",":"") a[i] }
+      gsub(/^[[:space:]]+|[[:space:]]+$/,"",mods)
+      gsub(/^[[:space:]]+|[[:space:]]+$/,"",key)
+      gsub(/^[[:space:]]+|[[:space:]]+$/,"",disp)
+      gsub(/^[[:space:]]+|[[:space:]]+$/,"",args)
+      mods=resolve(mods); disp=resolve(disp); args=resolve(args)
+      combo=mods
+      if (combo!="" && key!="") combo=combo " + " key
+      else combo=combo key
+      out=sprintf("%-22s  %s", combo, disp)
+      if (args!="") out=out " " args
+      print out
+    }
+    # literal string replacement of $vars; longest keys first to avoid
+    # partial collisions (e.g. $mod inside $mainMod).
+    function resolve(s,   i,j,keys,nk,tmp,p,name) {
+      nk=0
+      for (k in var) keys[++nk]=k
+      for (i=1;i<=nk;i++) for (j=i+1;j<=nk;j++)
+        if (length(keys[j])>length(keys[i])) { tmp=keys[i]; keys[i]=keys[j]; keys[j]=tmp }
+      for (i=1;i<=nk;i++) {
+        name=keys[i]
+        while ((p=index(s,name))>0)
+          s=substr(s,1,p-1) var[name] substr(s,p+length(name))
+      }
+      return s
+    }
+  ' "$HYPR_CONF" | sed 's/[[:space:]]*$//' | sort
+}
+
+browse_hypr() {
+  while true; do
+    local choice
+    choice="$(parse_hypr | menu "hyprland ▸")" || return
+    [[ -z "$choice" ]] && return
+    show "$choice"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Menus
+# ---------------------------------------------------------------------------
+commands_menu() {
+  while true; do
+    local pick tool
+    pick="$(list_tools | awk -F'\t' '{printf "%-14s  %s\n",$1,$2}' | menu "commands ▸")" || return
+    [[ -z "$pick" ]] && return
+    tool="$(printf '%s' "$pick" | awk '{print $1}')"
+    browse_tool "$tool"
+  done
+}
+
+main_menu() {
+  while true; do
+    local pick
+    pick="$(printf 'Commands\nHotkeys\n' | menu "refmenu")" || exit 0
+    case "$pick" in
+      Commands) commands_menu ;;
+      Hotkeys)  browse_hypr ;;
+      "")       exit 0 ;;
+    esac
+  done
+}
+
+case "${1:-}" in
+  commands) commands_menu ;;
+  hotkeys)  browse_hypr ;;
+  -h|--help)
+    cat <<EOF
+refmenu - wofi reference menu
+
+usage:
+  refmenu            open the main menu (Commands / Hotkeys)
+  refmenu commands   jump straight to the commands menu
+  refmenu hotkeys    jump straight to the live Hyprland keybind list
+
+env:
+  REFMENU_DATA_DIR   override data dir (default: XDG, falls back to repo)
+  REFMENU_HYPR_CONF  override hyprland.conf path
+EOF
+    ;;
+  *) main_menu ;;
+esac

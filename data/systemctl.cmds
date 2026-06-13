@@ -1,0 +1,20 @@
+# Control systemd services and units
+## Service control
+systemctl start <unit>	Start a service now
+systemctl stop <unit>	Stop a service now
+systemctl restart <unit>	Restart a service
+systemctl reload <unit>	Reload config without full restart
+## Boot behavior
+systemctl enable <unit>	Start unit at boot
+systemctl disable <unit>	Don't start unit at boot
+systemctl enable --now <unit>	Enable and start in one go
+## Inspect
+systemctl status <unit>	Show current state + recent logs
+systemctl is-active <unit>	Print whether unit is running
+systemctl list-units --failed	List units that failed
+systemctl daemon-reload	Reload unit files after editing them
+## Logs (journalctl)
+journalctl -u <unit>	Logs for one unit
+journalctl -b	Logs since last boot
+journalctl -f	Follow logs live
+journalctl -p err -b	Errors only, this boot

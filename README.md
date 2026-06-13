@@ -20,7 +20,7 @@ refmenu
 ## Install
 
 ```sh
-git clone https://github.com/<you>/refmenu.git
+git clone https://github.com/cSushi/refmenu.git
 cd refmenu
 ./install.sh
 ```
